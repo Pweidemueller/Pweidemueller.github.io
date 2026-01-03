@@ -375,7 +375,8 @@ ul {
     margin-bottom: 1rem;
 }
 
-.email-link {
+.email-link,
+.email-text {
     font-size: 1.5rem;
     font-weight: 600;
     color: var(--primary-color);
