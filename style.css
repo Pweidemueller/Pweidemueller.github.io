@@ -314,6 +314,23 @@ ul {
     color: var(--text-secondary);
 }
 
+.card-link {
+    display: block;
+}
+
+.card-link-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.card-link:hover .card-link-cta {
+    gap: 12px;
+}
+
 /* Publications */
 .publication-list {
     display: flex;
