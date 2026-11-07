@@ -149,6 +149,13 @@
     .stats { font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); margin-top: 8px; font-variant-numeric: tabular-nums; }
     .stats b { color: var(--text-primary); }
     .small { font-size: 12.5px; color: var(--muted); }
+    .toggle-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .toggle-btn { border: none; border-left: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text-secondary); padding: 7px 14px; font-weight: 500; font-size: 12.5px; }
+    .toggle-btn:first-child { border-left: none; }
+    .toggle-btn.active { background: var(--primary); color: #fff; font-weight: 600; }
+    .toggle-btn.active:hover { background: var(--primary-hover); }
+    .ctl[hidden] { display: none; }
+    #rRuler { height: 150px; }
 
     footer { margin-top: 60px; padding: 48px 20px 40px; background: var(--surface); border-top: 1px solid var(--border); text-align: center; color: var(--text-secondary); font-size: 0.9rem; }
     footer p { margin: 0 0 6px; }
@@ -250,6 +257,35 @@
 <li><b>Target-transform view.</b> Equivalently, the chain is really a symmetric random walk on \(y=\log x\). A symmetric random walk on \(y\) needs the target density <em>in \(y\)</em>, which (example b above) is \(\pi(e^y)\,e^{y}\). The extra \(e^{y'}/e^{y} = x'/x\) is the same factor. Leave it out and you're sampling \(p_Y(y)\propto\pi(e^{y})\), which in \(x\) is \(\propto \pi(x)/x\): a different, and here improper, distribution.</li>
 </ul>
 
+<h3>Intuition: the ruler</h3>
+<p>The confusing part is that the move <em>is</em> symmetric: from \(x\), stepping up by \(e^{k}\) and stepping back down by \(e^{-k}\) are equally likely. So why should anything need correcting? To see it, simplify the move to a fixed step: multiply by 2 or divide by 2, with probability ½ each. Starting from 1, the values the walker can ever land on are</p>
+\[ \tfrac18,\ \tfrac14,\ \tfrac12,\ 1,\ 2,\ 4,\ 8 \]
+<p>(we put a fence at both ends: a step off the ruler is rejected). Every step is the same size in \(\log x\), but not in \(x\): steps down shrink (1 → ½ → ¼) and steps up grow (1 → 2 → 4). So the marks on the ruler <b>crowd together near 0</b>. Each mark stands for the stretch of \(x\) nearest to it (the shaded cells below), and those cells are narrow near 0 and wide far out: a mark's cell width is proportional to \(x\).</p>
+<p>Take a flat target (every unit of \(x\) equally probable) and run two walkers with the same coin flips:</p>
+<ul>
+<li><b>Without correction</b>, every step inside the fence is accepted. Up and down are equally likely, so the walker visits <b>every mark equally often</b>. That is fair per mark, but the marks near 0 stand for tiny cells, so per unit of \(x\) the visits pile up near 0 (proportional to \(1/x\)).</li>
+<li><b>With correction</b>, a step is accepted with probability \(\min(1, x'/x)\): steps up always, steps down half the time. Now each mark is visited in proportion to its cell width, so visits <b>per unit of \(x\)</b> come out flat, which is what the target asks for.</li>
+</ul>
+<p>Here "time at a mark" just means the number of iterations the walker sits there, i.e. how many samples it contributes to the histogram.</p>
+
+<div class="widget" id="rulerW">
+  <div class="controls">
+    <div class="btns"><button class="primary" id="rRun">Start</button><button id="rStepB">Step</button><button id="rReset">Reset</button></div>
+    <div class="ctl"><label>Speed: <b id="rSpdV">10</b> steps/s</label><input id="rSpd" type="range" min="0" max="100" step="1" value="30"></div>
+  </div>
+  <div class="pane"><h4>The ruler: marks reachable by ×2 / ÷2 steps, each with its shaded cell of x</h4>
+    <canvas id="rRuler"></canvas>
+    <div class="stats" id="rTxt">Press Start or Step.</div>
+  </div>
+  <div class="grid" style="margin-top:14px">
+    <div class="pane"><h4>Share of visits per mark</h4><canvas id="rPer"></canvas>
+      <div class="legend"><span><span class="sw" style="background:var(--corr)"></span>with correction</span><span><span class="sw" style="background:var(--unc)"></span>without correction</span></div></div>
+    <div class="pane"><h4>Visits per unit of x, relative to the flat target (1 = correct)</h4><canvas id="rDen"></canvas>
+      <div class="legend"><span><span class="sw" style="background:var(--corr)"></span>with correction</span><span><span class="sw" style="background:var(--unc)"></span>without correction</span><span><span class="sw" style="background:var(--prior)"></span>target</span></div></div>
+  </div>
+</div>
+<p>The continuous move \(x' = x\,e^{k}\) behaves the same way, only with infinitely fine marks. That is why its correction is the Jacobian \(x'/x\).</p>
+
 </section>
 <section class="prose-section" id="s3"><h2>Metropolis–Hastings, piece by piece</h2>
 
@@ -290,15 +326,20 @@ The unknown constant \(Z\) cancels, which is the whole reason MH is useful.</li>
 </section>
 <section class="prose-section" id="s4"><h2>Simulation: a multiplier move with and without the correction</h2>
 
-<p>Setup: prior \(X\sim\text{Exp}(\lambda)\), no data, so the target is \(\pi(x)=\lambda e^{-\lambda x}\). Each step draws \(k\sim\mathcal N(0,\sigma^2)\), proposes \(x'=x\,e^{k}\), and computes</p>
-\[ \alpha_{\text{Hastings}} = \min\!\Big\{1,\; e^{-\lambda(x'-x)}\cdot e^{k}\Big\},\qquad
-   \alpha_{\text{no Hastings}} = \min\!\Big\{1,\; e^{-\lambda(x'-x)}\Big\}. \]
+<p>Setup: no data, so the target is the prior \(\pi(x)\). Choose either an <b>exponential prior</b> \(X\sim\text{Exp}(\lambda)\), with \(\pi(x)=\lambda e^{-\lambda x}\), or a <b>bounded uniform prior</b> \(X\sim\text{Uniform}(a,b)\), the continuous version of the ruler above. Each step draws \(k\sim\mathcal N(0,\sigma^2)\), proposes \(x'=x\,e^{k}\), and computes</p>
+\[ \alpha_{\text{Hastings}} = \min\!\Big\{1,\; \frac{\pi(x')}{\pi(x)}\cdot e^{k}\Big\},\qquad
+   \alpha_{\text{no Hastings}} = \min\!\Big\{1,\; \frac{\pi(x')}{\pi(x)}\Big\}, \]
+<p>where \(\pi(x')/\pi(x) = e^{-\lambda(x'-x)}\) for the exponential prior, and for the uniform prior it is 1 if \(x'\) is inside \([a,b]\) and 0 otherwise.</p>
 <p>Two chains run side by side and use the <em>same</em> random numbers (\(k\) and \(u\)) at every step, so the only difference between them is the \(e^{k}\) term. Changing a slider restarts the run.</p>
 
 <div class="widget" id="mcmcW">
   <div class="controls">
+    <div class="ctl" style="flex:0 0 auto"><label>Prior</label>
+      <span class="toggle-group" id="priorToggle"><button class="toggle-btn active" data-prior="exp">Exponential(λ)</button><button class="toggle-btn" data-prior="unif">Uniform(a, b)</button></span></div>
     <div class="ctl"><label>Proposal width σ (log scale): <b id="sigV">0.50</b></label><input id="sig" type="range" min="0.05" max="3" step="0.05" value="0.5"></div>
-    <div class="ctl"><label>Prior rate λ (mean 1/λ): <b id="lamV">1.00</b></label><input id="lam" type="range" min="0.2" max="5" step="0.1" value="1"></div>
+    <div class="ctl" id="lamCtl"><label>Prior rate λ (mean 1/λ): <b id="lamV">1.00</b></label><input id="lam" type="range" min="0.2" max="5" step="0.1" value="1"></div>
+    <div class="ctl" id="aCtl" hidden><label>Lower bound a: <b id="aV">0.10</b></label><input id="ua" type="range" min="-2" max="0" step="0.05" value="-1"></div>
+    <div class="ctl" id="bCtl" hidden><label>Upper bound b: <b id="bV">10</b></label><input id="ub" type="range" min="2" max="20" step="0.5" value="10"></div>
     <div class="ctl"><label>Start value X₀: <b id="x0V">1.00</b></label><input id="x0" type="range" min="-2" max="1.5" step="0.01" value="0"></div>
     <div class="ctl"><label>Speed: <b id="spdV">5</b> steps/s</label><input id="spd" type="range" min="0" max="100" step="1" value="25"></div>
   </div>
@@ -309,6 +350,7 @@ The unknown constant \(Z\) cancels, which is the whole reason MH is useful.</li>
     <label><input type="checkbox" id="showC" checked> <span style="color:var(--corr)">with Hastings</span></label>
     <label><input type="checkbox" id="showU" checked> <span style="color:var(--unc)">without Hastings</span></label>
     <label><input type="checkbox" id="showP" checked> prior density</label>
+    <label id="showTL" hidden><input type="checkbox" id="showT" checked> what the uncorrected chain targets (∝ 1/x)</label>
     <label><input type="checkbox" id="logY"> trace: log y-axis</label>
     <label><input type="checkbox" id="fullT"> trace: whole run (otherwise last 400 steps)</label>
   </div>
@@ -318,7 +360,7 @@ The unknown constant \(Z\) cancels, which is the whole reason MH is useful.</li>
       <div class="stats" id="propTxt">Press Start or Step.</div></div>
     <div class="pane"><h4>(b) Metropolis–Hastings ratio for the latest step</h4><div class="ratio" id="ratioBox"><span class="small">Press Start or Step.</span></div></div>
     <div class="pane"><h4>(c) Trace of X</h4><canvas id="cTrace"></canvas>
-      <div class="legend"><span><span class="sw" style="background:var(--corr)"></span>with Hastings</span><span><span class="sw" style="background:var(--unc)"></span>without Hastings</span><span><span class="sw" style="background:var(--prior)"></span>prior mean 1/λ</span></div></div>
+      <div class="legend"><span><span class="sw" style="background:var(--corr)"></span>with Hastings</span><span><span class="sw" style="background:var(--unc)"></span>without Hastings</span><span><span class="sw" style="background:var(--prior)"></span>prior mean</span></div></div>
     <div class="pane"><h4>(d) Distribution of sampled X</h4><canvas id="cHist"></canvas>
       <div class="stats" id="histTxt"></div></div>
   </div>
@@ -326,12 +368,13 @@ The unknown constant \(Z\) cancels, which is the whole reason MH is useful.</li>
 
 <h3>What you should see</h3>
 <ul>
-<li><b>With Hastings</b> (green): the histogram converges to the \(\text{Exp}(\lambda)\) prior and the sample mean to \(1/\lambda\). Smaller σ means higher acceptance but slower exploration; very large σ means many rejections. Both reach the same answer; only efficiency differs.</li>
-<li><b>Without Hastings</b> (orange): the chain drifts toward 0 and piles up there. It's doing a correct Metropolis walk on \(\log x\) with target \(\propto\pi(x)\), which in \(x\) means density \(\propto e^{-\lambda x}/x\). That function isn't integrable at 0, so there's no proper stationary distribution: once \(x\ll 1/\lambda\) the prior ratio is ≈1, every move is accepted, and \(\log x\) wanders freely toward \(-\infty\). Switch on the log y-axis to watch it.</li>
+<li><b>With Hastings</b> (blue): the histogram converges to the prior: \(\text{Exp}(\lambda)\) with mean \(1/\lambda\), or flat on \([a,b]\) with mean \((a+b)/2\). Smaller σ means higher acceptance but slower exploration; very large σ means many rejections. Both reach the same answer; only efficiency differs.</li>
+<li><b>Without Hastings, uniform prior</b> (orange): the chain samples a density \(\propto 1/x\) on \([a,b]\), equal time per factor of 10, exactly like the ruler. With \(a=0.1,\ b=10\) it spends about half its time in \([0.1, 1]\) instead of the correct 9%, and its mean is \((b-a)/\ln(b/a)\approx 2.15\) instead of 5.05. Switch on the dashed curve to compare.</li>
+<li><b>Without Hastings, exponential prior</b> (orange): the chain drifts toward 0 and piles up there. It's doing a correct Metropolis walk on \(\log x\) with target \(\propto\pi(x)\), which in \(x\) means density \(\propto e^{-\lambda x}/x\). That function isn't integrable at 0, so there's no proper stationary distribution: once \(x\ll 1/\lambda\) the prior ratio is ≈1, every move is accepted, and \(\log x\) wanders freely toward \(-\infty\). Switch on the log y-axis to watch it.</li>
 </ul>
 
 <div class="box key">
-<p><b>So, is it true that a correct Hastings ratio makes the chain sample the prior?</b> Yes. With no data the posterior <em>is</em> the prior, so with \(\text{HR}=x'/x\) the stationary distribution is exactly \(\text{Exp}(\lambda)\), and the histogram of \(X\) approaches the prior as the run gets longer (in distribution, after burn-in, with Monte Carlo noise shrinking like \(1/\sqrt{\text{ESS}}\)). Without the correction the chain is not merely "a bit off": here it targets an improper distribution and collapses toward 0.</p>
+<p><b>So, is it true that a correct Hastings ratio makes the chain sample the prior?</b> Yes. With no data the posterior <em>is</em> the prior, so with \(\text{HR}=x'/x\) the stationary distribution is exactly the prior (here \(\text{Exp}(\lambda)\) or \(\text{Uniform}(a,b)\)), and the histogram of \(X\) approaches the prior as the run gets longer (in distribution, after burn-in, with Monte Carlo noise shrinking like \(1/\sqrt{\text{ESS}}\)). Without the correction the chain samples \(\pi(x)/x\) instead: with the uniform prior that is a clearly wrong but proper distribution, and with the exponential prior it is improper, so the chain collapses toward 0.</p>
 </div>
 
 <p class="small" style="margin-top:2em">Implementation note: the chains are stored as \(\log x\) so the uncorrected chain can wander to extremely small values without underflowing the arithmetic. Both chains share the same \(k\) and \(u\) at each step (common random numbers).</p>
@@ -401,25 +444,86 @@ function jacDraw(){
 $("jacSig").addEventListener("input",()=>{jacSample();jacDraw();});
 $("jacResample").addEventListener("click",()=>{jacSample();jacDraw();});
 
+/* ---------------- Ruler widget ---------------- */
+const RM=[1/8,1/4,1/2,1,2,4,8], RL=["1/8","1/4","1/2","1","2","4","8"], RCW=RM.map(x=>x*(Math.SQRT2-Math.SQRT1_2));
+const RTOT=RCW.reduce((a,b)=>a+b,0);
+let R, rRunning=false, rAcc=0, rLast=0;
+function rReset(){R={j:{c:3,u:3},cnt:{c:new Array(7).fill(0),u:new Array(7).fill(0)},n:0,last:null};rDraw();}
+function rStep(){const up=Math.random()<.5,u=Math.random();const res={up,uu:u};
+  for(const key of ["c","u"]){const j=R.j[key],j2=j+(up?1:-1);let alpha;
+    if(j2<0||j2>6)alpha=0; else alpha=key==="c"?Math.min(1,RM[j2]/RM[j]):1;
+    const acc=u<alpha; if(acc)R.j[key]=j2; R.cnt[key][R.j[key]]++; res[key]={j,j2,alpha,acc};}
+  R.n++;R.last=res;}
+function rDraw(){
+  // ruler
+  const g=setup($("rRuler")),{ctx,W,H}=g; ctx.clearRect(0,0,W,H);
+  const L=86,Rr=14,xmax=8*Math.SQRT2*1.02,X=v=>L+v/xmax*(W-L-Rr),y0=72;
+  ctx.font="11px Inter,system-ui,sans-serif";
+  RM.forEach((m,j)=>{const a=m*Math.SQRT1_2,b=m*Math.SQRT2;ctx.fillStyle=css(j%2?"--grid":"--axis");ctx.globalAlpha=j%2?.9:.55;ctx.fillRect(X(a),y0-14,X(b)-X(a),28);});
+  ctx.globalAlpha=1;ctx.strokeStyle=css("--muted");ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(X(0),y0);ctx.lineTo(X(xmax),y0);ctx.stroke();
+  ctx.fillStyle=css("--muted");ctx.textAlign="center";ctx.textBaseline="top";
+  [0,2,4,6,8,10].forEach(v=>{ctx.beginPath();ctx.moveTo(X(v),y0+14);ctx.lineTo(X(v),y0+19);ctx.stroke();ctx.fillText(v,X(v),y0+21);});
+  ctx.textAlign="left";ctx.fillText("x",X(xmax)-8,y0+21);
+  RM.forEach((m,j)=>{ctx.strokeStyle=css("--ink");ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(X(m),y0-14);ctx.lineTo(X(m),y0+14);ctx.stroke();});
+  // labels above: small marks fanned out
+  ctx.fillStyle=css("--ink");ctx.font="600 11px Inter,system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="bottom";
+  const lx=j=>j<3?L-72+j*27:X(RM[j]);
+  RM.forEach((m,j)=>{const tx=lx(j),ty=y0-30;ctx.fillText(RL[j],tx,ty);if(j<3){ctx.strokeStyle=css("--muted");ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(X(m),y0-15);ctx.stroke();}});
+  // walkers
+  const dot=(j,dy,c)=>{ctx.fillStyle=css(c);ctx.beginPath();ctx.arc(X(RM[j]),y0+dy,6,0,7);ctx.fill();};
+  if(R.last){[["c",-8],["u",8]].forEach(([k,dy])=>{const r=R.last[k];if(!r.acc&&r.j2>=0&&r.j2<=6){ctx.strokeStyle=css(k==="c"?"--corr":"--unc");ctx.lineWidth=1.5;const x=X(RM[r.j2]),y=y0+dy;ctx.beginPath();ctx.moveTo(x-4,y-4);ctx.lineTo(x+4,y+4);ctx.moveTo(x+4,y-4);ctx.lineTo(x-4,y+4);ctx.stroke();}});}
+  dot(R.j.c,-8,"--corr"); dot(R.j.u,8,"--unc");
+  ctx.font="11px Inter,system-ui,sans-serif";ctx.fillStyle=css("--muted");ctx.textAlign="left";ctx.textBaseline="top";
+  ctx.fillText("shaded cells: the stretch of x each mark stands for (width ∝ x)",L,H-16);ctx.fillStyle=css("--corr");ctx.fillText("● with correction (above)",8,y0+34);ctx.fillStyle=css("--unc");ctx.fillText("● without (below)",8,y0+48);
+  // status
+  if(R.last){const l=R.last;const d=r=>r.j2<0||r.j2>6?'<span class="rej">rejected</span> (off the ruler)':(r.acc?'<span class="acc">accepted</span>':'<span class="rej">rejected</span>')+` (α = ${r.alpha===1?"1":"½"})`;
+    $("rTxt").innerHTML=`Step <b>${R.n}</b>: coin says <b>${l.up?"× 2 (up)":"÷ 2 (down)"}</b>, u = ${l.uu.toFixed(2)} · <span style="color:var(--corr)">with correction</span>: ${RL[l.c.j]} → ${l.c.j2>=0&&l.c.j2<=6?RL[l.c.j2]:"off"}, ${d(l.c)} · <span style="color:var(--unc)">without</span>: ${RL[l.u.j]} → ${l.u.j2>=0&&l.u.j2<=6?RL[l.u.j2]:"off"}, ${d(l.u)}`;}
+  else $("rTxt").textContent="Both walkers start at 1. Press Start or Step.";
+  // bars
+  const bars=(cid,val,cap,refs)=>{const gg=setup($(cid));const f=frame(gg,[0,7],[0,cap],{l:40,xticks:[],yfmt:v=>+v.toPrecision(3)});const {ctx:c,X:BX,Y:BY}=f;
+    c.fillStyle=css("--muted");c.font="11px Inter,system-ui,sans-serif";c.textAlign="center";c.textBaseline="top";
+    for(let j=0;j<7;j++){c.fillStyle=css("--muted");c.textAlign="center";c.textBaseline="top";c.fillText(RL[j],BX(j+.5),BY(0)+4);
+      [["c","--corr",0],["u","--unc",1]].forEach(([k,col,o])=>{const v=val(k,j);if(!isFinite(v))return;const vv=Math.min(v,cap);const x0=BX(j+.12+o*.38),x1=BX(j+.12+o*.38+.36);
+        c.fillStyle=css(col);c.globalAlpha=.85;c.fillRect(x0,BY(vv),x1-x0,BY(0)-BY(vv));c.globalAlpha=1;
+        if(v>cap){c.fillStyle=css("--ink");c.font="600 10.5px Inter,system-ui";c.textAlign="center";c.textBaseline="top";c.fillText("▲"+(v<10?v.toFixed(1):v.toFixed(0)),(x0+x1)/2,BY(cap)+2+o*12);c.font="11px Inter,system-ui,sans-serif";c.fillStyle=css("--muted");}});}
+    refs.forEach(([fn,col])=>{c.strokeStyle=css(col);c.lineWidth=1.6;c.setLineDash([5,4]);c.beginPath();for(let j=0;j<7;j++){const y=BY(Math.min(fn(j),cap));c.moveTo(BX(j+.05),y);c.lineTo(BX(j+.95),y);}c.stroke();c.setLineDash([]);});};
+  const n=Math.max(R.n,1);
+  bars("rPer",(k,j)=>R.cnt[k][j]/n,0.6,[]);
+  bars("rDen",(k,j)=>R.n?(R.cnt[k][j]/n)/(RCW[j]/RTOT):NaN,3,[[()=>1,"--prior"]]);
+}
+function rSpeed(){return Math.round(Math.pow(10,+$("rSpd").value/100*Math.log10(2000)));}
+function rLoop(t){if(!rRunning)return;const dt=Math.min(.1,(t-rLast)/1000);rLast=t;rAcc+=dt*rSpeed();let n=Math.floor(rAcc);rAcc-=n;n=Math.min(n,2000);for(let i=0;i<n;i++)rStep();if(n)rDraw();requestAnimationFrame(rLoop);}
+function rStop(){rRunning=false;$("rRun").textContent="Start";}
+$("rRun").addEventListener("click",()=>{if(rRunning)rStop();else{rRunning=true;$("rRun").textContent="Pause";rLast=performance.now();requestAnimationFrame(rLoop);}});
+$("rStepB").addEventListener("click",()=>{rStop();rStep();rDraw();});
+$("rReset").addEventListener("click",()=>{rReset();});
+$("rSpd").addEventListener("input",()=>{$("rSpdV").textContent=rSpeed();});
+$("rSpdV").textContent=rSpeed();
+
 /* ---------------- Section 4 MCMC widget ---------------- */
 const MAXN=200000, WIN=400, NB=50;
 let S, running=false, accum=0, lastT=0;
-function params(){return {sig:+$("sig").value, lam:+$("lam").value, x0:Math.pow(10,+$("x0").value)};}
+let PRIOR="exp";
+function params(){const p={sig:+$("sig").value, lam:+$("lam").value, a:Math.pow(10,+$("ua").value), b:+$("ub").value, prior:PRIOR, x0:Math.pow(10,+$("x0").value)};
+  if(p.prior==="unif") p.x0=Math.min(p.b,Math.max(p.a,p.x0));
+  p.mean=p.prior==="exp"?1/p.lam:(p.a+p.b)/2; return p;}
+function logPriorRatio(x,x2){const p=S.p; if(p.prior==="exp") return -p.lam*(x2-x); return (x2>=p.a&&x2<=p.b)?0:-Infinity;}
 function reset(){
   const p=params();
   $("sigV").textContent=p.sig.toFixed(2); $("lamV").textContent=p.lam.toFixed(2); $("x0V").textContent=fmt(p.x0,2);
+  $("aV").textContent=fmt(p.a,2); $("bV").textContent=p.b.toFixed(1);
   const mk=()=>({y:Math.log(p.x0), tr:new Float64Array(MAXN), n:0, acc:0, sum:0, hist:new Float64Array(NB), over:0});
-  S={p, c:mk(), u:mk(), it:0, last:null, ks:[], xmax:5.5/p.lam};
+  S={p, c:mk(), u:mk(), it:0, last:null, ks:[], xmax:p.prior==="exp"?5.5/p.lam:p.b*1.04};
   S.c.tr[0]=S.u.tr[0]=Math.log(p.x0);
   drawAll();
 }
 function step(){
   if(S.it>=MAXN-1){stop();return;}
-  const {sig,lam}=S.p; const k=randn()*sig, u=Math.random();
+  const {sig}=S.p; const k=randn()*sig, u=Math.random();
   const res={k,uu:u};
   [["c",true],["u",false]].forEach(([key,corr])=>{
     const ch=S[key]; const x=Math.exp(ch.y), x2=Math.exp(ch.y+k);
-    const logPR=-lam*(x2-x), logR=logPR+(corr?k:0);
+    const logPR=logPriorRatio(x,x2), logR=logPR+(corr?k:0);
     const alpha=logR>=0?1:Math.exp(logR); const accept=Math.log(u)<logR;
     res[key]={x,x2,priorRatio:Math.exp(logPR),hr:Math.exp(k),R:Math.exp(logR),alpha,accept};
     if(accept){ch.y+=k;ch.acc++;}
@@ -455,7 +559,8 @@ function drawRatio(){
     const head=corr?`<div class="ttl c">With Hastings correction</div>`:`<div class="ttl u">Without Hastings correction</div>`;
     const formula=corr?`α = min{1, π(x′)/π(x) · x′/x}`:`α = min{1, π(x′)/π(x)}`;
     const vals=`x = ${fmt(r.x)} → x′ = x·e<sup>k</sup> = ${fmt(r.x2)}`;
-    const pr=`π(x′)/π(x) = e<sup>−λ(x′−x)</sup> = e<sup>−${lam.toFixed(2)}·(${fmt(r.x2-r.x)})</sup> = ${fmt(r.priorRatio)}`;
+    const pr=S.p.prior==="exp"?`π(x′)/π(x) = e<sup>−λ(x′−x)</sup> = e<sup>−${lam.toFixed(2)}·(${fmt(r.x2-r.x)})</sup> = ${fmt(r.priorRatio)}`
+      :(r.priorRatio>0?`π(x′)/π(x) = 1 (x′ inside [${fmt(S.p.a,2)}, ${fmt(S.p.b,2)}])`:`π(x′)/π(x) = 0 (x′ outside [${fmt(S.p.a,2)}, ${fmt(S.p.b,2)}])`);
     const hr=corr?`<br>Hastings ratio x′/x = e<sup>k</sup> = ${fmt(r.hr)}`:`<br>Hastings ratio: <i>(omitted, treated as 1)</i>`;
     const R=corr?`<br>α = min{1, ${fmt(r.priorRatio)} × ${fmt(r.hr)}} = <b>${fmt(r.alpha)}</b>`:`<br>α = min{1, ${fmt(r.priorRatio)}} = <b>${fmt(r.alpha)}</b>`;
     const dec=`<br>u = ${L.uu.toFixed(3)} ${r.accept?"<":"≥"} α → ${r.accept?'<span class="acc">ACCEPT</span> (X ← '+fmt(r.x2)+')':'<span class="rej">REJECT</span> (X stays '+fmt(r.x)+')'}`;
@@ -470,16 +575,16 @@ function drawTrace(){
   // y-range
   let lo=Infinity,hi=-Infinity;
   show.forEach(([k])=>{const tr=S[k].tr;for(let i=a;i<=n;i++){const v=tr[i];if(v<lo)lo=v;if(v>hi)hi=v;}});
-  const lm=Math.log(1/S.p.lam); let yr;
+  const lm=Math.log(S.p.mean); let yr;
   const LN10=Math.LN10;
   if(logY){ if(!isFinite(lo)){lo=lm-2;hi=lm+1;} lo=Math.min(lo,lm-1.5)/LN10; hi=Math.max(hi,lm+1)/LN10; const pad=(hi-lo)*.06; yr=[lo-pad,hi+pad]; }
-  else { const h=isFinite(hi)?Math.exp(hi):0; yr=[0,Math.max(h,3/S.p.lam)*1.08]; }
+  else { const h=isFinite(hi)?Math.exp(hi):0; yr=[0,Math.max(h,S.p.prior==="exp"?3/S.p.lam:S.p.b)*1.08]; }
   const f=frame(g,[a,b],yr,{xlabel:"iteration",l:50,xfmt:v=>v>=1000?(v/1000)+"k":v,
     yfmt:logY?(v=>"1e"+v):(v=>+v.toPrecision(3)),yticks:logY?niceTicks(yr[0],yr[1],4).filter(v=>Number.isInteger(v)):undefined});
   const {ctx,X,Y}=f;
   ctx.save();ctx.beginPath();ctx.rect(f.P.l,f.P.t,f.W-f.P.l-f.P.r,f.H-f.P.t-f.P.b);ctx.clip();
   // prior mean
-  const my=logY?lm/LN10:1/S.p.lam;ctx.strokeStyle=css("--prior");ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(f.P.l,Y(my));ctx.lineTo(f.W,Y(my));ctx.stroke();ctx.setLineDash([]);
+  const my=logY?lm/LN10:S.p.mean;ctx.strokeStyle=css("--prior");ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(f.P.l,Y(my));ctx.lineTo(f.W,Y(my));ctx.stroke();ctx.setLineDash([]);
   const tf=v=>logY?v/LN10:Math.exp(v);
   const cols=Math.max(1,Math.floor(f.W-f.P.l-f.P.r));
   show.forEach(([k,,c])=>{const tr=S[k].tr;ctx.strokeStyle=css(c);ctx.lineWidth=1.4;ctx.beginPath();
@@ -495,22 +600,27 @@ function drawTrace(){
 }
 
 function drawHist(){
-  const g=setup($("cHist")); const lam=S.p.lam, xm=S.xmax, bw=xm/NB;
+  const g=setup($("cHist")); const P=S.p, lam=P.lam, xm=S.xmax, bw=xm/NB, isU=P.prior==="unif";
+  const pdf=isU?(x=>(x>=P.a&&x<=P.b)?1/(P.b-P.a):0):(x=>lam*Math.exp(-lam*x));
+  const pmax=isU?1/(P.b-P.a):lam;
   const show=[["c",$("showC").checked,"--corr"],["u",$("showU").checked,"--unc"]].filter(s=>s[1]);
-  const dens={}; let ymax=$("showP").checked?lam:0;
+  const dens={}; let ymax=$("showP").checked?pmax:0;
   show.forEach(([k])=>{const ch=S[k];dens[k]=[...ch.hist].map(c=>ch.n?c/(ch.n*bw):0);});
   if(dens.c&&$("showC").checked) ymax=Math.max(ymax,...dens.c);
-  if(!ymax) ymax=lam;
-  const cap=Math.max(ymax,lam)*1.25;
+  if(isU&&dens.u) ymax=Math.max(ymax,...dens.u);
+  if(!ymax) ymax=pmax;
+  const cap=isU?Math.max(ymax,pmax)*1.12:Math.max(ymax,pmax)*1.25;
   const f=frame(g,[0,xm],[0,cap],{xlabel:"x",l:40,yfmt:v=>+v.toPrecision(3)});
   const {ctx,X,Y}=f;
   show.forEach(([k,,c],j)=>{ctx.fillStyle=css(c);ctx.globalAlpha=show.length>1?.45:.6;
     dens[k].forEach((d,i)=>{const x0=X(i*bw),x1=X((i+1)*bw);const dd=Math.min(d,cap);ctx.fillRect(x0,Y(dd),x1-x0-.5,Y(0)-Y(dd));
       if(d>cap){ctx.globalAlpha=1;ctx.font="600 11px Inter,system-ui";ctx.textAlign="left";ctx.textBaseline="top";ctx.fillText(`▲ ${fmt(d,1)} (clipped)`,x1+3,f.P.t+2+j*14);ctx.globalAlpha=show.length>1?.45:.6;}});
     ctx.globalAlpha=1;});
-  if($("showP").checked) curve(f,x=>lam*Math.exp(-lam*x),0,xm,css("--prior"),[6,4],2.2);
+  if($("showP").checked){ if(isU){const h=1/(P.b-P.a);ctx.save();ctx.strokeStyle=css("--prior");ctx.lineWidth=2.2;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(X(0),Y(0));ctx.lineTo(X(P.a),Y(0));ctx.lineTo(X(P.a),Y(h));ctx.lineTo(X(P.b),Y(h));ctx.lineTo(X(P.b),Y(0));ctx.lineTo(X(xm),Y(0));ctx.stroke();ctx.restore();}
+    else curve(f,x=>lam*Math.exp(-lam*x),0,xm,css("--prior"),[6,4],2.2); }
+  if(isU&&$("showT").checked&&$("showU").checked){const c=1/Math.log(P.b/P.a);curve(f,x=>c/x,P.a,P.b,css("--unc"),[2,3],2);}
   const st=k=>{const ch=S[k];return ch.n?`mean <b>${fmt(ch.sum/ch.n)}</b>, acceptance <b>${(100*ch.acc/ch.n).toFixed(1)}%</b>`:"–";};
-  $("histTxt").innerHTML=`Samples: <b>${S.it}</b> · prior mean 1/λ = <b>${fmt(1/lam)}</b><br><span style="color:var(--corr)">With Hastings:</span> ${st("c")}<br><span style="color:var(--unc)">Without:</span> ${st("u")}${S.u.over||S.c.over?`<br>Beyond x-axis (x &gt; ${fmt(xm,2)}): ${S.c.n?(100*S.c.over/S.c.n).toFixed(2):0}% / ${S.u.n?(100*S.u.over/S.u.n).toFixed(2):0}% (prior: ${(100*Math.exp(-lam*xm)).toFixed(2)}%)`:""}${S.it>=MAXN-1?"<br>Reached the 200k-step cap; press Reset.":""}`;
+  $("histTxt").innerHTML=`Samples: <b>${S.it}</b> · prior mean = <b>${fmt(P.mean)}</b><br><span style="color:var(--corr)">With Hastings:</span> ${st("c")}<br><span style="color:var(--unc)">Without:</span> ${st("u")}${!isU&&(S.u.over||S.c.over)?`<br>Beyond x-axis (x &gt; ${fmt(xm,2)}): ${S.c.n?(100*S.c.over/S.c.n).toFixed(2):0}% / ${S.u.n?(100*S.u.over/S.u.n).toFixed(2):0}% (prior: ${(100*Math.exp(-lam*xm)).toFixed(2)}%)`:""}${S.it>=MAXN-1?"<br>Reached the 200k-step cap; press Reset.":""}`;
 }
 function drawAll(){drawProp();drawRatio();drawTrace();drawHist();}
 
@@ -521,14 +631,17 @@ function stop(){running=false;$("run").textContent="Start";}
 $("run").addEventListener("click",()=>running?stop():start());
 $("stepB").addEventListener("click",()=>{stop();step();drawAll();});
 $("reset").addEventListener("click",()=>{reset();});
-["sig","lam","x0"].forEach(id=>$(id).addEventListener("input",reset));
+["sig","lam","x0","ua","ub"].forEach(id=>$(id).addEventListener("input",reset));
+document.querySelectorAll("#priorToggle .toggle-btn").forEach(btn=>btn.addEventListener("click",()=>{
+  PRIOR=btn.dataset.prior; document.querySelectorAll("#priorToggle .toggle-btn").forEach(b=>b.classList.toggle("active",b===btn));
+  const u=PRIOR==="unif"; $("lamCtl").hidden=u; $("aCtl").hidden=!u; $("bCtl").hidden=!u; $("showTL").hidden=!u; reset();}));
 $("spd").addEventListener("input",()=>{$("spdV").textContent=speed();});
-["showC","showU","showP","logY","fullT"].forEach(id=>$(id).addEventListener("change",drawAll));
-let rt;window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{jacDraw();drawAll();},120);});
+["showC","showU","showP","showT","logY","fullT"].forEach(id=>$(id).addEventListener("change",drawAll));
+let rt;window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{jacDraw();rDraw();drawAll();},120);});
 if(window.matchMedia)matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>{jacDraw();drawAll();});
 
 $("spdV").textContent=speed();
-jacSample();jacDraw();reset();
+jacSample();jacDraw();rReset();reset();
 
 document.addEventListener("DOMContentLoaded",()=>{});
 window.addEventListener("load",()=>{ if(window.renderMathInElement) renderMathInElement(document.body,{delimiters:[{left:"\\[",right:"\\]",display:true},{left:"\\(",right:"\\)",display:false}],ignoredClasses:["widget"]}); });
