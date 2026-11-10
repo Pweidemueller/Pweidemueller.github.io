@@ -211,6 +211,15 @@
 \[ p_M(m) = \phi_\sigma(\log m)\cdot\frac{1}{m}, \]
 <p>which is the log-normal density. The \(1/m\) is the Jacobian. Forgetting it gives the wrong shape (the curve labelled "no Jacobian" below), which doesn't even integrate to 1.</p>
 
+<div class="box">
+<p><b>Why \(dk/dx'\) and not \(dx'/dk\)?</b> Take the multiplier move \(x' = x\,e^{k}\) with the current \(x\) held fixed (for \(x=1\), \(x'\) is exactly \(m\) above). Then \(dx'/dk = x'\) and \(dk/dx' = 1/x'\): they are reciprocals, and either can be used.</p>
+<p>It's a bookkeeping convention. We know the density of \(k\) (the normal \(\varphi\)), and we want the density of \(x'\). Probability is density times width, and the probability in matching small windows has to be the same:</p>
+\[ q(x')\,|dx'| = \varphi(k)\,|dk| \]
+<p>Solving for the density we want:</p>
+\[ q(x') = \varphi(k)\,\left|\frac{dk}{dx'}\right| = \frac{\varphi(k)}{|dx'/dk|} = \frac{\varphi(k)}{x'} \]
+<p>So "multiply by \(dk/dx'\)" and "divide by \(dx'/dk\)" are the same operation. The standard formula uses d(known variable) / d(new variable) only because you're solving for the new variable's density, which makes it a multiplication.</p>
+</div>
+
 <p><b>(b) An exponential prior seen on the log scale.</b> If \(X\sim\text{Exp}(\lambda)\) and \(Y=\log X\), then \(x=e^y\), \(dx/dy=e^y\), and</p>
 \[ p_Y(y) = \lambda e^{-\lambda e^{y}}\cdot e^{y}. \]
 <p>This one matters later: a sampler that moves in \(\log x\) is effectively sampling \(Y\), and has to target this density, Jacobian included.</p>
